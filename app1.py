@@ -130,6 +130,8 @@ class ERPChatbot:
             return self.handle_attendance_queries(subintent)
         if intent == "auto_invoice":
             return self.handle_auto_invoice_queries(subintent)
+        if intent == "leave_management":
+            return self.handle_leave_management(subintent)
 
         if subintent and 'subintents' in matched_intent:
             matched_subintent = next((s for s in matched_intent['subintents'] if s['subintent'] == subintent), None)
@@ -203,6 +205,21 @@ class ERPChatbot:
             return "Most of your trips are listed as Business travel. For specific trip purposes, provide the Travel ID."
         return "Could you please clarify what travel-related info you're looking for?"
 
+    def handle_leave_management(self, subintent):
+        if subintent == "apply_leave":
+            return "To apply for leave, please provide the leave type (annual, sick, personal), start date, end date, and reason."
+        elif subintent == "leave_balance":
+            return "Your current leave balance:\n- Annual Leave: 15 days\n- Sick Leave: 10 days\n- Personal Leave: 5 days"
+        elif subintent == "leave_status":
+            return "Your recent leave requests:\n- Annual Leave (Jan 10-15, 2024): Approved\n- Sick Leave (Feb 5, 2024): Pending approval"
+        elif subintent == "cancel_leave":
+            return "Which leave application would you like to cancel? Please provide the leave ID or date."
+        elif subintent == "leave_history":
+            return "Your leave history for the past 6 months:\n- Annual Leave: 5 days (Jan 10-15, 2024)\n- Sick Leave: 2 days (Feb 5-6, 2024)\n- Personal Leave: 1 day (Mar 20, 2024)"
+        elif subintent == "team_leaves":
+            return "Current team members on leave:\n- John Smith: Annual Leave (Jul 10-15, 2024)\n- Sarah Brown: Sick Leave (Jul 8, 2024)\n- Mike Johnson: Personal Leave (Jul 12, 2024)"
+        return "What would you like to do regarding your leaves? You can apply for leave, check your balance, or view your leave history."
+    
     def get_fallback_response(self, user_message):
         query_embedding = self.sentence_model.encode([user_message])
         faq_embeddings = self.sentence_model.encode(self.faqs['question'])
