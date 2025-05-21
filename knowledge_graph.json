@@ -244,6 +244,102 @@
       ]
     },
     {
+      "intent": "leave_management",
+      "patterns": [
+        "leave management",
+        "manage leaves",
+        "apply for leave",
+        "leave balance",
+        "leave request",
+        "time off",
+        "vacation",
+        "sick leave",
+        "holiday request"
+      ],
+      "responses": ["What would you like to do regarding your leaves?"],
+      "subintents": [
+        {
+          "subintent": "apply_leave",
+          "patterns": [
+            "apply for leave",
+            "request time off",
+            "submit leave application",
+            "take vacation",
+            "need sick leave",
+            "plan holiday"
+          ],
+          "responses": [
+            "To apply for leave, please provide the leave type (annual, sick, personal), start date, end date, and reason."
+          ]
+        },
+        {
+          "subintent": "leave_balance",
+          "patterns": [
+            "check leave balance",
+            "how many leaves do I have",
+            "remaining leave days",
+            "available leaves",
+            "my leave quota"
+          ],
+          "responses": [
+            "Your current leave balance:\n- Annual Leave: 15 days\n- Sick Leave: 10 days\n- Personal Leave: 5 days"
+          ]
+        },
+        {
+          "subintent": "leave_status",
+          "patterns": [
+            "leave application status",
+            "is my leave approved",
+            "check leave request",
+            "leave approval status",
+            "pending leaves"
+          ],
+          "responses": [
+            "Your recent leave requests:\n- Annual Leave (Jan 10-15, 2024): Approved\n- Sick Leave (Feb 5, 2024): Pending approval"
+          ]
+        },
+        {
+          "subintent": "cancel_leave",
+          "patterns": [
+            "cancel my leave",
+            "withdraw leave application",
+            "revoke leave request",
+            "delete my leave",
+            "cancel vacation"
+          ],
+          "responses": [
+            "Which leave application would you like to cancel? Please provide the leave ID or date."
+          ]
+        },
+        {
+          "subintent": "leave_history",
+          "patterns": [
+            "my leave history",
+            "past leaves",
+            "previous leave applications",
+            "leave record",
+            "all my leaves"
+          ],
+          "responses": [
+            "Your leave history for the past 6 months:\n- Annual Leave: 5 days (Jan 10-15, 2024)\n- Sick Leave: 2 days (Feb 5-6, 2024)\n- Personal Leave: 1 day (Mar 20, 2024)"
+          ]
+        },
+        {
+          "subintent": "team_leaves",
+          "patterns": [
+            "team leave calendar",
+            "department leaves",
+            "who is on leave",
+            "team absences",
+            "staff on vacation"
+          ],
+          "responses": [
+            "Current team members on leave:\n- John Smith: Annual Leave (Jul 10-15, 2024)\n- Sarah Brown: Sick Leave (Jul 8, 2024)\n- Mike Johnson: Personal Leave (Jul 12, 2024)"
+          ]
+        }
+      ]
+    },
+    {
       "intent": "auto_invoice",
       "patterns": [
         "generate invoice",
