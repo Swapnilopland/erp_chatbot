@@ -6,7 +6,7 @@ import pandas as pd
 import sqlite3
 from datetime import datetime
 import requests
-from sentence_transformers import SentenceTransformer
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
 app = Flask(__name__)
@@ -15,13 +15,42 @@ CORS(app)
 ERP_API_BASE_URL = "https://your-erp-api.com/v1"
 ERP_API_KEY = "your-api-key"
 
+
 class ERPChatbot:
     def __init__(self):
-        self.sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
-        self.knowledge_graph = self.load_knowledge_graph()
-        self.faqs = self.load_faqs()
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        self.vectorizer = TfidfVectorizer()
+        
+        # Collect all patterns from intents and subintents + FAQ questions
+        import json
+        all_text = []
+        
+        # Load knowledge graph and collect patterns
+        with open('knowledge_graph.json') as f:
+            self.knowledge_graph = json.load(f)
+            for intent in self.knowledge_graph['intents']:
+                all_text.extend(intent['patterns'])
+                if 'subintents' in intent:
+                    for sub in intent['subintents']:
+                        all_text.extend(sub['patterns'])
+        
+        # Load FAQs and add questions to patterns
+        self.faqs = pd.read_csv('erp_faqs.csv')
+        all_text.extend(self.faqs['question'].tolist())
+        
+        # Fit vectorizer once with all text
+        self.vectorizer.fit(all_text)
+        
+        # Store vectorized patterns for each intent
+        for intent in self.knowledge_graph['intents']:
+            intent['patterns_embeddings'] = self.vectorizer.transform(intent['patterns'])
+            if 'subintents' in intent:
+                for sub in intent['subintents']:
+                    sub['patterns_embeddings'] = self.vectorizer.transform(sub['patterns'])
+        
+        # Initialize database and API session
         self.init_db()
-
+        
         self.erp_session = requests.Session()
         self.erp_session.headers.update({
             'Authorization': f'Bearer {ERP_API_KEY}',
@@ -32,10 +61,10 @@ class ERPChatbot:
         with open('knowledge_graph.json') as f:
             data = json.load(f)
             for intent in data['intents']:
-                intent['patterns_embeddings'] = self.sentence_model.encode(intent['patterns'])
+                intent['patterns_embeddings'] = self.vectorizer.fit_transform(intent['patterns'])
                 if 'subintents' in intent:
                     for sub in intent['subintents']:
-                        sub['patterns_embeddings'] = self.sentence_model.encode(sub['patterns'])
+                        sub['patterns_embeddings'] = self.vectorizer.transform(sub['patterns'])
             return data
 
     def load_faqs(self):
@@ -45,22 +74,47 @@ class ERPChatbot:
         conn = sqlite3.connect('erp_chatbot.db')
         c = conn.cursor()
         c.execute('''CREATE TABLE IF NOT EXISTS conversations
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                      user_id TEXT,
-                      message TEXT,
-                      response TEXT,
-                      intent TEXT,
-                      subintent TEXT,
-                      sentiment TEXT,
-                      confidence REAL,
-                      timestamp DATETIME)''')
+                     (
+                         id
+                         INTEGER
+                         PRIMARY
+                         KEY
+                         AUTOINCREMENT,
+                         user_id
+                         TEXT,
+                         message
+                         TEXT,
+                         response
+                         TEXT,
+                         intent
+                         TEXT,
+                         subintent
+                         TEXT,
+                         sentiment
+                         TEXT,
+                         confidence
+                         REAL,
+                         timestamp
+                         DATETIME
+                     )''')
         c.execute('''CREATE TABLE IF NOT EXISTS api_calls
-                     (id INTEGER PRIMARY KEY AUTOINCREMENT,
-                      conversation_id INTEGER,
-                      endpoint TEXT,
-                      parameters TEXT,
-                      response_code INTEGER,
-                      timestamp DATETIME)''')
+                     (
+                         id
+                         INTEGER
+                         PRIMARY
+                         KEY
+                         AUTOINCREMENT,
+                         conversation_id
+                         INTEGER,
+                         endpoint
+                         TEXT,
+                         parameters
+                         TEXT,
+                         response_code
+                         INTEGER,
+                         timestamp
+                         DATETIME
+                     )''')
         conn.commit()
         conn.close()
 
@@ -73,7 +127,7 @@ class ERPChatbot:
         return {'label': 'NEUTRAL', 'score': 0.6}
 
     def classify_intent(self, text):
-        text_embedding = self.sentence_model.encode([text])
+        text_embedding = self.vectorizer.transform([text.lower()])
         best_intent = None
         highest_sim = 0
         for intent in self.knowledge_graph['intents']:
@@ -219,10 +273,10 @@ class ERPChatbot:
         elif subintent == "team_leaves":
             return "Current team members on leave:\n- John Smith: Annual Leave (Jul 10-15, 2024)\n- Sarah Brown: Sick Leave (Jul 8, 2024)\n- Mike Johnson: Personal Leave (Jul 12, 2024)"
         return "What would you like to do regarding your leaves? You can apply for leave, check your balance, or view your leave history."
-    
+
     def get_fallback_response(self, user_message):
-        query_embedding = self.sentence_model.encode([user_message])
-        faq_embeddings = self.sentence_model.encode(self.faqs['question'])
+        query_embedding = self.vectorizer.transform([user_message.lower()])
+        faq_embeddings = self.vectorizer.transform(self.faqs['question'].str.lower())
         similarities = cosine_similarity(query_embedding, faq_embeddings)
         max_idx = np.argmax(similarities)
         if similarities[0][max_idx] > 0.5:
@@ -232,7 +286,7 @@ class ERPChatbot:
     def log_conversation(self, user_id, message, response, intent_data, sentiment):
         conn = sqlite3.connect('erp_chatbot.db')
         c = conn.cursor()
-        c.execute('''INSERT INTO conversations 
+        c.execute('''INSERT INTO conversations
                      (user_id, message, response, intent, subintent, sentiment, confidence, timestamp)
                      VALUES (?, ?, ?, ?, ?, ?, ?, ?)''',
                   (user_id, message, response,
@@ -242,7 +296,9 @@ class ERPChatbot:
         conn.commit()
         conn.close()
 
+
 chatbot = ERPChatbot()
+
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
@@ -262,10 +318,12 @@ def chat():
         'sentiment_score': sentiment['score']
     })
 
+
 @app.route('/api/faqs', methods=['GET'])
 def get_faqs():
     faqs = chatbot.faqs.to_dict('records')
     return jsonify(faqs)
+
 
 if __name__ == '__main__':
     app.run(debug=True)
