@@ -57,7 +57,18 @@ class ERPChatbot:
             'Content-Type': 'application/json'
         })
 
+    def load_knowledge_graph(self):
+        with open('knowledge_graph.json') as f:
+            data = json.load(f)
+            for intent in data['intents']:
+                intent['patterns_embeddings'] = self.vectorizer.fit_transform(intent['patterns'])
+                if 'subintents' in intent:
+                    for sub in intent['subintents']:
+                        sub['patterns_embeddings'] = self.vectorizer.transform(sub['patterns'])
+            return data
 
+    def load_faqs(self):
+        return pd.read_csv('erp_faqs.csv')
 
     def init_db(self):
         conn = sqlite3.connect('erp_chatbot.db')
