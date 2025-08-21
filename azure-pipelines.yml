@@ -1,78 +1,73 @@
 trigger:
-  - main
+- main
 
 pool:
+  # name: "Azure Pipelines"
   vmImage: ubuntu-latest
 
 variables:
-  target-path: /var/www/html/ai
+    # pm2-name: ERP-Frontend-Opland-dev
+    target-path: /var/www/html/ai
 
 steps:
-  - task: NodeTool@0
-    inputs:
-      versionSpec: '20.x'
-    displayName: 'Install Node.js'
 
-  - task: DownloadSecureFile@1
-    name: DownloadEC2SSH
-    inputs:
-      secureFile: 'opland_devops.pem'
+- task: NodeTool@0
+  inputs:
+    versionSpec: '20.x'
+  displayName: 'Install Node.js'
 
-  - script: |
-      mkdir -p ~/.ssh
-      mv $(DownloadEC2SSH.secureFilePath) ~/.ssh/id_rsa
-      chmod 600 ~/.ssh/id_rsa
-    displayName: 'Prepare SSH private key'
+- task: DownloadSecureFile@1
+  name: DownloadEC2SSH
+  inputs:
+    secureFile: 'opland_devops.pem'
 
-  - task: Bash@3
-    inputs:
-      targetType: 'inline'
-      script: |
-        ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ubuntu@ec2-15-207-228-146.ap-south-1.compute.amazonaws.com "
-        mkdir -p /var/www/html/backend/dev && sudo chmod -R 777 /var/www/html/backend/dev"
-    displayName: 'Create destination directory if missing'
-
-  - task: Bash@3
-    inputs:
-      targetType: 'inline'
-      script: |
-        set -e
-
-        echo "Starting rsync to EC2..."
-
-        rsync -avz --delete --progress \
-          --no-perms --no-owner --no-group \
-          --exclude='.git' \
-          --exclude='.env' \
-          --exclude='node_modules' \
-          --exclude='vendor' \
-          --exclude='storage' \
-          -e "ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa" \
-          ./ ubuntu@ec2-15-207-228-146.ap-south-1.compute.amazonaws.com:/var/www/html/backend/dev \
-          || echo "⚠️ Rsync completed with warnings (code 23), but main files were transferred."
-
-        echo "✅ Rsync completed."
-    displayName: 'Copy artifacts to EC2 via rsync'
+# Step 2: Move the key to a known path and set strict permissions
+- script: |
+    mkdir -p ~/.ssh
+    mv $(DownloadEC2SSH.secureFilePath) ~/.ssh/id_rsa  # Move to .ssh directory
+    chmod 600 ~/.ssh/id_rsa  # Set correct permissions (0600)
+  displayName: 'Prepare SSH private key'
 
 
-  - task: Bash@3
-    displayName: "Run scripts on EC2"
-    inputs:
-      targetType: 'inline'
-      script: |
-        ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ubuntu@ec2-15-207-228-146.ap-south-1.compute.amazonaws.com <<'ENDSSH'
-        cd /var/www/html/backend/dev
-        composer install
-        php artisan tenants:migrate
-        php artisan tenants:seed
-        ENDSSH
+- script: |
+    ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ubuntu@ec2-15-207-228-146.ap-south-1.compute.amazonaws.com <<'ENDSSH'
+    sudo rm -rf $(target-path);
+    ENDSSH
+  displayName: "Stopping and cleaning old build"
 
-  - script: |
-      rm -f ~/.ssh/id_rsa
-    displayName: 'Delete SSH private key'
-    condition: always()
+# Step: Copy env file
+- script: |
+    cp .env.dev .env
+  displayName: 'Replace .env.dev with .env'
 
-  - script: |
-      rm -rf *
-    displayName: 'Clean up working directory'
-    condition: always()
+- task: CmdLine@2
+  displayName: 'npm install and build'
+  inputs:
+    script: |
+      npm install --no-package-lock
+      npm run build
+
+- task: Bash@3
+  inputs:
+    targetType: 'inline'
+    script:  ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa ubuntu@ec2-15-207-228-146.ap-south-1.compute.amazonaws.com "mkdir -p $(target-path);sudo chmod 777 $(target-path)"
+  displayName: 'create destination directory if doesnt exist'
+
+- task: Bash@3
+  inputs:
+    targetType: 'inline'
+    script:  rsync -avz --delete -u -e "ssh -o StrictHostKeyChecking=no -i ~/.ssh/id_rsa" ./build/ ubuntu@ec2-15-207-228-146.ap-south-1.compute.amazonaws.com:$(target-path)
+  displayName: 'Copy artifacts to EC2 via rsync'
+
+   
+# Step 5: Clean up - Delete the SSH private key
+- script: |
+    rm -f ~/.ssh/id_rsa  # Remove the SSH private key after use
+  displayName: 'Delete SSH private key'
+  condition: always()
+
+# Step 6: Clean up build artifacts
+- script: |
+    rm -rf *  # Remove build artifacts directory
+  displayName: 'Clean up working directory'
+  condition: always()  # Ensure cleanup runs regardless of previous step outcomes
